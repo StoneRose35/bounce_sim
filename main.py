@@ -162,7 +162,7 @@ class Wall:
 if __name__ == "__main__":
     FPS = 24
     screensize = (1500,1000)
-    N_AGENTS = 200
+    N_AGENTS = 300
     OFFSET = 10
     SPAWN_OFFSET = 20
     GRAPH_HEIGHT = 100
@@ -170,10 +170,12 @@ if __name__ == "__main__":
     BUFF_LENGTH = 120
     pygame.init()
     screen = pygame.display.set_mode(screensize)
+    pygame.display.set_caption("My Sharona")
     bg = pygame.Surface(screensize)
     dbg_font = pygame.font.SysFont('Comic Sans MS', 30)
     clock = pygame.time.Clock()
     it = 0
+    phase = 0
 
     agents = []
     a = Agent()
@@ -254,11 +256,18 @@ if __name__ == "__main__":
                             other.state = 1
                             if other.buff_started is None:
                                 other.buff_started = it
+                        if other.state == 1 and a.state != 2:
+                            a.state = 1
+                            if a.buff_started is None:
+                                a.buff_started = it
+
 
             a.set_position(p_new)
             if a.state == 1 and it - a.buff_started > BUFF_LENGTH:
                 a.state = 2
                 a.buff_ended = it
+
+
 
         n_buffed = 0
         n_saved = 0
@@ -268,6 +277,12 @@ if __name__ == "__main__":
             elif a.state == 2:
                 n_saved += 1
 
+
+        if n_buffed/N_AGENTS > 0.1 and phase == 0:
+            for idx in range(int(N_AGENTS*0.7)):
+                agents[idx].speed = 0.0
+            phase = 1
+                
         pygame.draw.rect(graph, (255, 128, 128),pygame.Rect((it*3 % screensize[0],GRAPH_HEIGHT - n_buffed*GRAPH_HEIGHT/N_AGENTS),(3, n_buffed*GRAPH_HEIGHT/N_AGENTS)))
         pygame.draw.rect(graph, (128, 255, 128),
                          pygame.Rect(((it * 3) % screensize[0], 0),

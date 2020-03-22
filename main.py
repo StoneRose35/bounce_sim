@@ -282,7 +282,7 @@ if __name__ == "__main__":
             for idx in range(int(N_AGENTS*0.7)):
                 agents[idx].speed = 0.0
             phase = 1
-                
+
         pygame.draw.rect(graph, (255, 128, 128),pygame.Rect((it*3 % screensize[0],GRAPH_HEIGHT - n_buffed*GRAPH_HEIGHT/N_AGENTS),(3, n_buffed*GRAPH_HEIGHT/N_AGENTS)))
         pygame.draw.rect(graph, (128, 255, 128),
                          pygame.Rect(((it * 3) % screensize[0], 0),

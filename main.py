@@ -1,6 +1,7 @@
 import pygame
 import math
 import numpy as np
+import bisect
 
 
 class Agent:
@@ -10,6 +11,9 @@ class Agent:
         self.size = 8
         self.speed = 0.6
         self.id = 0
+        self.state = 0
+        self.buff_started = None
+        self.buff_ended = None
 
     def __eq__(self, other):
         if isinstance(other,Agent):
@@ -62,7 +66,22 @@ class Agent:
             return None
 
     def draw(self, bg):
-        pygame.draw.circle(bg, (128, 128, 128), (int(self.position[0]), int(self.position[1])),self.size)
+        if self.state == 0:
+            clr = (128, 128, 128)
+        elif self.state == 1:
+            clr = (255, 128, 128)
+        elif self.state == 2:
+            clr = (128, 255, 128)
+        else:
+            clr = (255, 0, 0)
+        pygame.draw.circle(bg, clr, (int(self.position[0]), int(self.position[1])),self.size)
+
+    def __gt__(self, other):
+        return self.position[0] > other.position[0]
+
+    def __lt__(self, other):
+        return self.position[0] < other.position[0]
+
 
 class Wall:
     def __init__(self,p1, p2):
@@ -141,28 +160,36 @@ class Wall:
         pygame.draw.line(bg,(0,0,0), self.p1, self.p2)
 
 if __name__ == "__main__":
-    FPS = 60
-    screensize = (720,480)
+    FPS = 24
+    screensize = (1500,1000)
+    N_AGENTS = 200
+    OFFSET = 10
+    SPAWN_OFFSET = 20
+    GRAPH_HEIGHT = 100
+    AGENT_SPEED = 9.0
+    BUFF_LENGTH = 120
     pygame.init()
     screen = pygame.display.set_mode(screensize)
     bg = pygame.Surface(screensize)
     dbg_font = pygame.font.SysFont('Comic Sans MS', 30)
     clock = pygame.time.Clock()
-
+    it = 0
 
     agents = []
     a = Agent()
-    a.position=(20, 30)
-    a.direction = 2
+    a.position = (np.random.randint(SPAWN_OFFSET, screensize[0] - SPAWN_OFFSET), np.random.randint(SPAWN_OFFSET, screensize[1] - SPAWN_OFFSET))
+    a.direction = np.random.randint(0, 360)
+    a.speed=AGENT_SPEED
     a.id = 1
     agents.append(a)
-
-    for cnt in range(20):
+    for cnt in range(N_AGENTS):
         a = Agent()
         collided = True
         while collided is True:
-            a.position = (np.random.randint(20, screensize[0]-20), np.random.randint(20, screensize[1]-20))
+            a.position = (np.random.randint(SPAWN_OFFSET, screensize[0] - SPAWN_OFFSET - GRAPH_HEIGHT),
+                          np.random.randint(SPAWN_OFFSET, screensize[1] - SPAWN_OFFSET - GRAPH_HEIGHT))
             a.direction = np.random.randint(0, 360)
+            a.speed = AGENT_SPEED
             a.id = cnt + 10
             collided = False
             for ao in agents:
@@ -170,18 +197,24 @@ if __name__ == "__main__":
                     collided = True
         agents.append(a)
 
-    OFFSET = 10
+    r_indx = np.random.randint(0,N_AGENTS)
+
+    agents[r_indx].state = 1
+    agents[r_indx].buff_started = it
     walls = []
     w = Wall((OFFSET, OFFSET), (screensize[0]-OFFSET, OFFSET))
     walls.append(w)
-    w = Wall((screensize[0]-OFFSET, OFFSET), (screensize[0]-OFFSET, screensize[1]-OFFSET))
+    w = Wall((screensize[0]-OFFSET, OFFSET), (screensize[0]-OFFSET, screensize[1]-OFFSET-GRAPH_HEIGHT))
     walls.append(w)
-    w = Wall((screensize[0]-OFFSET, screensize[1]-OFFSET), (OFFSET,screensize[1]-OFFSET))
+    w = Wall((screensize[0]-OFFSET, screensize[1]-OFFSET-GRAPH_HEIGHT), (OFFSET,screensize[1]-OFFSET-GRAPH_HEIGHT))
     walls.append(w)
-    w = Wall((OFFSET, screensize[1]-OFFSET), (OFFSET, OFFSET))
+    w = Wall((OFFSET, screensize[1]-OFFSET-GRAPH_HEIGHT), (OFFSET, OFFSET))
     walls.append(w)
 
+    graph = pygame.Surface((screensize[0]-OFFSET, GRAPH_HEIGHT))
+    graph.fill((255, 255, 255))
     running = True
+
     while running:
         clock.tick(FPS)
 
@@ -200,23 +233,49 @@ if __name__ == "__main__":
                     # do some special actions here if needed, like a second round of collision detection
                     a.direction = d_new
                     a.clip_direction()
-                    for w in walls:
-                        p_i = p_new
-                        (bounced, p_new2, d_new2, p_bounce2) = w.bounce_calc(p_bounce, p_i, a.size)
-                        if bounced is True:
-                            p_new = p_new2
-                            break
+                    #for w in walls:
+                    #    p_i = p_new
+                    #    (bounced, p_new2, d_new2, p_bounce2) = w.bounce_calc(p_bounce, p_i, a.size)
+                    #    if bounced is True:
+                    #        p_new = p_new2
+                    #        break
+
+            a_idx = agents.index(a)
+            idx_nb = a_idx - 1
+
+
             for other in agents:
-                if other != a:
+                if other != a and math.fabs(other.position[0]-new_pos[0][0]) < a.size + other.size and other.state < 2:
                     b_res = a.bounce(new_pos, other)
                     if b_res is not None:
                         a.direction = b_res[1]
                         p_new = b_res[0]
-
+                        if a.state == 1 and other.state != 2:
+                            other.state = 1
+                            if other.buff_started is None:
+                                other.buff_started = it
 
             a.set_position(p_new)
+            if a.state == 1 and it - a.buff_started > BUFF_LENGTH:
+                a.state = 2
+                a.buff_ended = it
 
-        bg.blit(dbg_font.render("direction: {:.2f}\nspeed: {:.2f}".format(agents[0].direction,agents[0].speed),True,(255, 0, 0)), (10, screensize[1]-50-10))
+        n_buffed = 0
+        n_saved = 0
+        for a in agents:
+            if a.state == 1:
+                n_buffed += 1
+            elif a.state == 2:
+                n_saved += 1
+
+        pygame.draw.rect(graph, (255, 128, 128),pygame.Rect((it*3 % screensize[0],GRAPH_HEIGHT - n_buffed*GRAPH_HEIGHT/N_AGENTS),(3, n_buffed*GRAPH_HEIGHT/N_AGENTS)))
+        pygame.draw.rect(graph, (128, 255, 128),
+                         pygame.Rect(((it * 3) % screensize[0], 0),
+                                     (3, n_saved * GRAPH_HEIGHT / N_AGENTS)))
+        pygame.draw.rect(graph, (255, 255, 255),pygame.Rect(((it+1)*3 % screensize[0], 0), (10, GRAPH_HEIGHT)))
+
+        bg.blit(dbg_font.render("buffed: {}, saved {}".format(n_buffed, n_saved),True,(255, 0, 0)), (10, screensize[1]-GRAPH_HEIGHT-50-10))
+        bg.blit(graph,(0,screensize[1] - GRAPH_HEIGHT))
         screen.blit(bg, (0, 0))
         pygame.display.flip()
 
@@ -225,11 +284,4 @@ if __name__ == "__main__":
                 running = False
                 quit()
 
-            elif evt.type == pygame.KEYDOWN:
-                if evt.key == pygame.K_w:
-                    agents[0].speed += 0.1
-                    agents[0].clip_direction()
-                elif evt.key == pygame.K_s:
-                    agents[0].speed -= 0.1
-                    agents[0].clip_direction()
-
+        it += 1

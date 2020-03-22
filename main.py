@@ -11,23 +11,55 @@ class Agent:
         self.speed = 0.6
         self.id = 0
 
+    def __eq__(self, other):
+        if isinstance(other,Agent):
+            return other.id == self.id
+        else:
+            return False
+
     def update_pos(self):
         dx = self.speed * math.cos(self.direction*math.pi/180.0)
         dy = self.speed * math.sin(self.direction*math.pi/180.0)
-        #self.position = (self.position[0] + dx, self.position[1] + dy)
         return np.array([[self.position[0] + dx], [self.position[1] + dy]])
 
     def get_pos(self):
         return np.array([[self.position[0]], [self.position[1]]])
 
-    def clip_direction(self):
-        if self.direction > 360.0:
-            self.direction -= 360.0
-        elif self.direction < 0.0:
-            self.direction = 360.0 + self.direction
+    def clip_direction(self, angle=None):
+        if angle is None:
+            if self.direction > 360.0:
+                self.direction -= 360.0
+            elif self.direction < 0.0:
+                self.direction = 360.0 + self.direction
+            return None
+        else:
+            angle_n = angle
+            if angle > 360.0:
+                angle_n = angle - 360.0
+            elif angle < 0.0:
+                angle_n = 360.0 + angle
+            return angle_n
+
 
     def set_position(self,pos):
         self.position = (pos[0][0], pos[1][0])
+
+    def collides(self, other):
+        d = np.array([[other.position[0] - self.position[0]],[other.position[1] -self.position[1]]])
+        return np.linalg.norm(d) < other.size + self.size
+
+    def collides_pos(self, new_pos, other):
+        d = np.array([[other.position[0] - new_pos[0][0]],[other.position[1] - new_pos[1][0]]])
+        return np.linalg.norm(d) < other.size + self.size
+
+    def bounce(self, new_pos, other):
+
+        if self.collides_pos(new_pos, other):
+            p_abs=self.get_pos()
+            d_new = self.clip_direction(self.direction + 180.0)
+            return p_abs, d_new
+        else:
+            return None
 
     def draw(self, bg):
         pygame.draw.circle(bg, (128, 128, 128), (int(self.position[0]), int(self.position[1])),self.size)
@@ -122,8 +154,21 @@ if __name__ == "__main__":
     a = Agent()
     a.position=(20, 30)
     a.direction = 2
-    #a.speed=1.0
+    a.id = 1
     agents.append(a)
+
+    for cnt in range(20):
+        a = Agent()
+        collided = True
+        while collided is True:
+            a.position = (np.random.randint(20, screensize[0]-20), np.random.randint(20, screensize[1]-20))
+            a.direction = np.random.randint(0, 360)
+            a.id = cnt + 10
+            collided = False
+            for ao in agents:
+                if ao.collides(a):
+                    collided = True
+        agents.append(a)
 
     OFFSET = 10
     walls = []
@@ -161,6 +206,13 @@ if __name__ == "__main__":
                         if bounced is True:
                             p_new = p_new2
                             break
+            for other in agents:
+                if other != a:
+                    b_res = a.bounce(new_pos, other)
+                    if b_res is not None:
+                        a.direction = b_res[1]
+                        p_new = b_res[0]
+
 
             a.set_position(p_new)
 
